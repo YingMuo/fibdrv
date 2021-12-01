@@ -24,19 +24,57 @@ static struct cdev *fib_cdev;
 static struct class *fib_class;
 static DEFINE_MUTEX(fib_mutex);
 
-static long long fib_sequence(long long k)
+#define BUFLEN 100
+#define ASC2INT(x) (x - 0x30)
+#define INT2ASC(x) (x + 0x30)
+
+typedef struct {
+    char buf[BUFLEN];
+} Bignum;
+
+void bn_zero(Bignum *x)
+{
+    for (int i = 0; i < 100; ++i)
+        x->buf[i] = 0;
+}
+
+void bn_one(Bignum *x)
+{
+    for (int i = 0; i < 99; ++i)
+        x->buf[i] = 0;
+    x->buf[99] = 1;
+}
+
+void bn_add(Bignum *dest, const Bignum *x, const Bignum *y)
+{
+    int idx = BUFLEN - 1;
+    for (int i = 0; i < 100; ++i)
+        dest->buf[i] = 0;
+    while (x->buf[idx] == 0 && y->buf[idx] == 0) {
+        dest->buf[idx] += ASC2INT(x->buf[idx]) + ASC2INT(y->buf[idx]);
+        if (dest->buf[idx] >= 10) {
+            dest->buf[idx] -= 10;
+            dest->buf[idx + 1] = 1;
+        }
+        dest->buf[idx] = INT2ASC(dest->buf[idx]);
+        idx--;
+    }
+}
+
+static char *fib_sequence(long long k)
 {
     /* FIXME: use clz/ctz and fast algorithms to speed up */
-    long long f[k + 2];
+    /* FIXME: use alloc to store f in heap */
+    Bignum f[k + 2];
 
-    f[0] = 0;
-    f[1] = 1;
+    bn_zero(&f[0]);
+    bn_one(&f[1]);
 
     for (int i = 2; i <= k; i++) {
-        f[i] = f[i - 1] + f[i - 2];
+        bn_add(&f[i], &f[i - 1], &f[i - 2]);
     }
 
-    return f[k];
+    return f[k].buf;
 }
 
 static int fib_open(struct inode *inode, struct file *file)
@@ -60,6 +98,7 @@ static ssize_t fib_read(struct file *file,
                         size_t size,
                         loff_t *offset)
 {
+    /* FIXME: change to cp ret of fib_sequence to buf and then return cp size*/
     return (ssize_t) fib_sequence(*offset);
 }
 
