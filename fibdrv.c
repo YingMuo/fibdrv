@@ -6,6 +6,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/slab.h>
 
 MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("National Cheng Kung University, Taiwan");
@@ -17,7 +18,7 @@ MODULE_VERSION("0.1");
 /* MAX_LENGTH is set to 92 because
  * ssize_t can't fit the number > 92
  */
-#define MAX_LENGTH 92
+#define MAX_LENGTH 100
 
 static dev_t fib_dev = 0;
 static struct cdev *fib_cdev;
@@ -34,15 +35,22 @@ typedef struct {
 
 void bn_zero(Bignum *x)
 {
-    for (int i = 0; i < 100; ++i)
+    for (int i = 0; i < 99; ++i)
         x->buf[i] = 0;
+    x->buf[99] = '0';
 }
 
 void bn_one(Bignum *x)
 {
     for (int i = 0; i < 99; ++i)
         x->buf[i] = 0;
-    x->buf[99] = 1;
+    x->buf[99] = '1';
+}
+
+void bn_assgin(Bignum *dest, const Bignum *src)
+{
+    for (int i = 0; i < 100; ++i)
+        dest->buf[i] = src->buf[i];
 }
 
 void bn_add(Bignum *dest, const Bignum *x, const Bignum *y)
@@ -50,18 +58,30 @@ void bn_add(Bignum *dest, const Bignum *x, const Bignum *y)
     int idx = BUFLEN - 1;
     for (int i = 0; i < 100; ++i)
         dest->buf[i] = 0;
-    while (x->buf[idx] == 0 && y->buf[idx] == 0) {
-        dest->buf[idx] += ASC2INT(x->buf[idx]) + ASC2INT(y->buf[idx]);
+    while (x->buf[idx] != 0 || y->buf[idx] != 0) {
+        if (x->buf[idx])
+            dest->buf[idx] += ASC2INT(x->buf[idx]);
+        if (y->buf[idx])
+            dest->buf[idx] += ASC2INT(y->buf[idx]);
         if (dest->buf[idx] >= 10) {
             dest->buf[idx] -= 10;
-            dest->buf[idx + 1] = 1;
+            dest->buf[idx - 1] = 1;
         }
         dest->buf[idx] = INT2ASC(dest->buf[idx]);
         idx--;
     }
+    if (dest->buf[idx])
+        dest->buf[idx] = INT2ASC(dest->buf[idx]);
 }
 
-static char *fib_sequence(long long k)
+void bn_print(Bignum *x)
+{
+    for (int i = 0; i < BUFLEN; ++i)
+        pr_info("%c", x->buf[i]);
+    pr_info("\n");
+}
+
+static Bignum *fib_sequence(long long k)
 {
     /* FIXME: use clz/ctz and fast algorithms to speed up */
     /* FIXME: use alloc to store f in heap */
@@ -74,7 +94,10 @@ static char *fib_sequence(long long k)
         bn_add(&f[i], &f[i - 1], &f[i - 2]);
     }
 
-    return f[k].buf;
+    Bignum *ret = kmalloc(sizeof(Bignum), GFP_KERNEL);
+    bn_assgin(ret, &f[k]);
+
+    return ret;
 }
 
 static int fib_open(struct inode *inode, struct file *file)
@@ -99,7 +122,17 @@ static ssize_t fib_read(struct file *file,
                         loff_t *offset)
 {
     /* FIXME: change to cp ret of fib_sequence to buf and then return cp size*/
-    return (ssize_t) fib_sequence(*offset);
+    Bignum *n = fib_sequence(*offset);
+    bn_print(n);
+    int start = 0;
+    for (start = 0; start < BUFLEN && !n->buf[start]; ++start)
+        ;
+    for (int i = start; i < BUFLEN; ++i)
+        put_user(n->buf[i], buf++);
+
+    kfree(n);
+
+    return (ssize_t)(BUFLEN - start);
 }
 
 /* write operation is skipped */

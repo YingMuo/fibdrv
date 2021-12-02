@@ -6,14 +6,16 @@
 #include <unistd.h>
 
 #define FIB_DEV "/dev/fibonacci"
+#define BUFLEN 100
 
 int main()
 {
     long long sz;
 
-    char buf[1];
+    char buf[BUFLEN];
     char write_buf[] = "testing writing";
     int offset = 100; /* TODO: try test something bigger than the limit */
+    // int offset = 5;
 
     int fd = open(FIB_DEV, O_RDWR);
     if (fd < 0) {
@@ -27,21 +29,23 @@ int main()
     }
 
     for (int i = 0; i <= offset; i++) {
+        memset(buf, 0, BUFLEN);
         lseek(fd, i, SEEK_SET);
-        sz = read(fd, buf, 1);
+        sz = read(fd, buf, BUFLEN);
         printf("Reading from " FIB_DEV
                " at offset %d, returned the sequence "
-               "%lld.\n",
-               i, sz);
+               "%s.\n",
+               i, buf);
     }
 
     for (int i = offset; i >= 0; i--) {
+        memset(buf, 0, BUFLEN);
         lseek(fd, i, SEEK_SET);
-        sz = read(fd, buf, 1);
+        sz = read(fd, buf, BUFLEN);
         printf("Reading from " FIB_DEV
                " at offset %d, returned the sequence "
-               "%lld.\n",
-               i, sz);
+               "%s.\n",
+               i, buf);
     }
 
     close(fd);
